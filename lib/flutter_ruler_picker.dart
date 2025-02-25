@@ -242,11 +242,13 @@ class RulerPickerState extends State<RulerPicker> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
+            // 刻度线改为底部对齐
             Align(
-                alignment: Alignment.topCenter,
+                alignment: Alignment.bottomCenter,
                 child: _buildRulerScaleLine(index)),
+            // 文本放在上方
             Positioned(
-              bottom: 5,
+              top: 5, // 从底部改为顶部
               width: 100,
               left: -50 + _ruleScaleInterval / 2,
               child: index % 10 == 0
@@ -550,35 +552,23 @@ class _SelectedRangePainter extends CustomPainter {
     // 获取当前滚动位置
     double currentScrollOffset = scrollController.hasClients ? scrollController.offset : scrollOffset;
     
-    // 计算参考值位置，确保精确到刻度位置
+    // 计算参考值位置，使用确定的方式，不再动态调整
     double referenceExactPos = getPositionByValue(referenceValue);
     
     // 视图中心位置（标记位置）
     double centerPos = size.width / 2;
     
-    // 计算参考值在视图中的位置
+    // 计算参考值在视图中的位置，采用固定方式
     double refPosInView = leftPadding + (referenceExactPos - currentScrollOffset);
     
-    // 确定滑动方向
-    bool isSlidingLeft = currentValue < referenceValue; // 向左滑动（值减小）
-    
-    // 刻度线中心偏移量
-    double halfRulerInterval = ruleScaleInterval / 2;
-    
-    // 根据滑动方向调整参考值位置，确保精确对齐
-    if (isSlidingLeft) {
-      // 向左滑动时（值减小），需要确保参考值位置精确对齐
-      refPosInView = ((refPosInView + halfRulerInterval) / ruleScaleInterval).round() 
-          * ruleScaleInterval - halfRulerInterval;
-    } else {
-      // 向右滑动时（值增加），同样确保精确对齐
-      refPosInView = ((refPosInView + halfRulerInterval) / ruleScaleInterval).round() 
-          * ruleScaleInterval - halfRulerInterval;
-    }
+    // 精确修正参考值位置，确保对准刻度线中心
+    double scaleHalfWidth = ruleScaleInterval / 2;
+    double adjustedRefPosInView = ((refPosInView + scaleHalfWidth) / ruleScaleInterval).floor() 
+        * ruleScaleInterval + scaleHalfWidth;
     
     // 计算选中区域边界
-    double left = min(refPosInView, centerPos);
-    double right = max(refPosInView, centerPos);
+    double left = min(adjustedRefPosInView, centerPos);
+    double right = max(adjustedRefPosInView, centerPos);
     
     // 特殊处理边界情况
     if (referenceValue == ranges.first.begin && left < leftPadding) {
