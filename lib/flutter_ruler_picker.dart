@@ -35,7 +35,9 @@ class _TrianglePainter extends CustomPainter {
 /// 用于 RulerPicker 的控制器，可以在构造函数里初始化默认值
 class RulerPickerController extends ValueNotifier<num> {
   RulerPickerController({num value = 0}) : super(value);
+
   num get value => super.value;
+
   set value(num newValue) {
     super.value = newValue;
   }
@@ -58,6 +60,8 @@ class RulerPicker extends StatefulWidget {
   final double rulerMarginTop;
   final Color rulerBackgroundColor;
   final RulerPickerController? controller;
+  final Color selectedRangeColor; // 添加选中区域的颜色属性
+  final num? referenceValue; // 添加参考值属性
 
   RulerPicker({
     required this.onValueChanged,
@@ -82,7 +86,10 @@ class RulerPicker extends StatefulWidget {
     this.marker,
     this.rulerBackgroundColor = Colors.white,
     this.controller,
+    this.selectedRangeColor = const Color.fromRGBO(200, 200, 200, 0.3), // 默认为半透明灰色
+    this.referenceValue,
   });
+
   @override
   State<StatefulWidget> createState() {
     return RulerPickerState();
@@ -97,6 +104,12 @@ class RulerPickerState extends State<RulerPicker> {
   Map<int, ScaleLineStyle> _scaleLineStyleMap = {};
   int itemCount = 0;
 
+  // 添加变量跟踪参考值和当前值
+  num _referenceValue = 0;
+  num _currentValue = 0;
+  // 添加标志，表示参考值是否已经初始化
+  bool _isReferenceValueInitialized = false;
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +120,13 @@ class RulerPickerState extends State<RulerPicker> {
     widget.scaleLineStyleList.forEach((element) {
       _scaleLineStyleMap[element.scale] = element;
     });
+    
+    // 初始化参考值和当前值
+    _referenceValue = widget.referenceValue ?? widget.controller?.value ?? 0;
+    _currentValue = widget.controller?.value ?? 0;
+    
+    // 如果提供了referenceValue，则标记为已初始化
+    _isReferenceValueInitialized = widget.referenceValue != null;
 
     double initValueOffset = getPositionByValue(widget.controller?.value ?? 0);
 
@@ -116,6 +136,9 @@ class RulerPickerState extends State<RulerPicker> {
     scrollController.addListener(_onValueChanged);
 
     widget.controller?.addListener(() {
+      setState(() {
+        _currentValue = widget.controller?.value ?? 0;
+      });
       setPositionByValue(widget.controller?.value ?? 0);
     });
   }
@@ -138,6 +161,10 @@ class RulerPickerState extends State<RulerPicker> {
 
     var lastConfig = widget.ranges.last;
     if (currentValue > lastConfig.end) currentValue = lastConfig.end;
+
+    setState(() {
+      _currentValue = currentValue;
+    });
 
     widget.onValueChanged(currentValue);
   }
@@ -164,10 +191,10 @@ class RulerPickerState extends State<RulerPicker> {
             Align(alignment: Alignment.topCenter, child: triangle()),
             Align(
                 child: Container(
-              width: 3,
-              height: 34,
-              color: Color.fromARGB(255, 118, 165, 248),
-            )),
+                  width: 3,
+                  height: 34,
+                  color: Color.fromARGB(255, 118, 165, 248),
+                )),
           ],
         ),
       ),
@@ -211,30 +238,30 @@ class RulerPickerState extends State<RulerPicker> {
 
   Widget _buildRulerScale(BuildContext context, int index) {
     return Container(
-      width: _ruleScaleInterval,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          Align(
-              alignment: Alignment.topCenter,
-              child: _buildRulerScaleLine(index)),
-          Positioned(
-            bottom: 5,
-            width: 100,
-            left: -50 + _ruleScaleInterval / 2,
-            child: index % 10 == 0
-                ? Container(
-                    alignment: Alignment.center,
-                    child: Text(
-                      widget.onBuildRulerScaleText(
-                          index, getRulerScaleValue(index)),
-                      style: widget.rulerScaleTextStyle,
-                    ),
-                  )
-                : SizedBox(),
-          ),
-        ],
-      ),
+        width: _ruleScaleInterval,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Align(
+                alignment: Alignment.topCenter,
+                child: _buildRulerScaleLine(index)),
+            Positioned(
+              bottom: 5,
+              width: 100,
+              left: -50 + _ruleScaleInterval / 2,
+              child: index % 10 == 0
+                  ? Container(
+                alignment: Alignment.center,
+                child: Text(
+                  widget.onBuildRulerScaleText(
+                      index, getRulerScaleValue(index)),
+                  style: widget.rulerScaleTextStyle,
+                ),
+              )
+                  : SizedBox(),
+            )
+          ],
+        )
     );
   }
 
@@ -278,53 +305,110 @@ class RulerPickerState extends State<RulerPicker> {
     return rulerScaleValue;
   }
 
+  /// 从滚动偏移量直接计算值
+  num getRulerValueFromOffset(double offset) {
+    int index = offset ~/ _ruleScaleInterval.toInt();
+    if (index < 0) index = 0;
+    
+    num value = getRulerScaleValue(index);
+    var lastConfig = widget.ranges.last;
+    if (value > lastConfig.end) value = lastConfig.end;
+    
+    return value;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(
+    // 获取安全的scrollOffset值
+    double safeScrollOffset = 0.0;
+    try {
+      if (scrollController.hasClients) {
+        safeScrollOffset = scrollController.offset;
+      }
+    } catch (e) {
+      // 如果发生异常，使用默认值0.0
+    }
 
-          // right: widget.width - _ruleScaleInterval
-          ),
+    return Container(
+      margin: EdgeInsets.only(),
       width: widget.width,
       height: widget.height + widget.rulerMarginTop,
       child: Stack(
         children: <Widget>[
           Align(
-              alignment: Alignment.bottomCenter,
-              child: Listener(
-                onPointerDown: (event) {
-                  FocusScope.of(context).requestFocus(new FocusNode());
-                  isPosFixed = false;
+            alignment: Alignment.bottomCenter,
+            child: Listener(
+              onPointerDown: (event) {
+                FocusScope.of(context).requestFocus(new FocusNode());
+                isPosFixed = false;
+                
+                // 只有在第一次触摸且未设置参考值时初始化
+                if (!_isReferenceValueInitialized) {
+                  setState(() {
+                    _referenceValue = _currentValue;
+                    _isReferenceValueInitialized = true;
+                  });
+                }
+              },
+              onPointerUp: (event) {},
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (scrollNotification) {
+                  if (scrollNotification is ScrollUpdateNotification) {
+                    // 强制重绘以更新选中区域
+                    setState(() {});
+                  } else if (scrollNotification is ScrollEndNotification) {
+                    if (!isPosFixed) {
+                      isPosFixed = true;
+                      fixOffset();
+                    }
+                  }
+                  return true;
                 },
-                onPointerUp: (event) {},
-                child: NotificationListener(
-                    onNotification: (scrollNotification) {
-                      if (scrollNotification is ScrollStartNotification) {
-                      } else if (scrollNotification
-                          is ScrollUpdateNotification) {
-                      } else if (scrollNotification is ScrollEndNotification) {
-                        if (!isPosFixed) {
-                          isPosFixed = true;
-                          fixOffset();
-                        }
-                      }
-                      return true;
-                    },
-                    child: Container(
-                        width: double.infinity,
-                        height: widget.height,
-                        color: widget.rulerBackgroundColor,
-                        child: ListView.builder(
-                          padding: EdgeInsets.only(
-                              left: (widget.width - _ruleScaleInterval) / 2,
-                              right: (widget.width - _ruleScaleInterval) / 2),
-                          itemExtent: _ruleScaleInterval,
-                          itemCount: itemCount,
-                          controller: scrollController,
-                          scrollDirection: Axis.horizontal,
-                          itemBuilder: _buildRulerScale,
-                        ))),
-              )),
+                child: Container(
+                  width: double.infinity,
+                  height: widget.height,
+                  color: widget.rulerBackgroundColor,
+                  child: Stack(
+                    children: [
+                      // 选中区域
+                      if (_referenceValue != _currentValue)
+                        CustomPaint(
+                          size: Size(widget.width, widget.height),
+                          painter: _SelectedRangePainter(
+                            scrollOffset: safeScrollOffset,
+                            referenceValue: _referenceValue,
+                            currentValue: _currentValue,
+                            getPositionByValue: getPositionByValue,
+                            selectedRangeColor: widget.selectedRangeColor,
+                            leftPadding: (widget.width - _ruleScaleInterval) / 2,
+                            ruleScaleInterval: _ruleScaleInterval,
+                            scrollController: scrollController,
+                            getRulerValueFromOffset: getRulerValueFromOffset,
+                            ranges: widget.ranges,
+                          ),
+                          isComplex: true,
+                          willChange: true,
+                        ),
+
+                      // ListView
+                      ListView.builder(
+                        padding: EdgeInsets.only(
+                          left: (widget.width - _ruleScaleInterval) / 2,
+                          right: (widget.width - _ruleScaleInterval) / 2,
+                        ),
+                        itemExtent: _ruleScaleInterval,
+                        itemCount: itemCount,
+                        controller: scrollController,
+                        scrollDirection: Axis.horizontal,
+                        itemBuilder: _buildRulerScale,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           Align(
             alignment: Alignment.topCenter,
             child: widget.marker ?? _buildMark(),
@@ -350,6 +434,14 @@ class RulerPickerState extends State<RulerPicker> {
             itemCount = _calculateItemCount();
           });
           _onValueChanged();
+        });
+      }
+
+      // 如果参考值发生变化，则更新参考值
+      if (widget.referenceValue != oldWidget.referenceValue && widget.referenceValue != null) {
+        setState(() {
+          _referenceValue = widget.referenceValue!;
+          _isReferenceValueInitialized = true;
         });
       }
     }
@@ -382,7 +474,7 @@ class RulerPickerState extends State<RulerPicker> {
         break;
       } else if (value >= config.begin) {
         var totalCount =
-            ((config.end - config.begin) / config.scale).truncate();
+        ((config.end - config.begin) / config.scale).truncate();
         offsetValue += totalCount * _ruleScaleInterval;
       }
     }
@@ -415,9 +507,108 @@ class RulerRange {
   final double scale;
   final int begin;
   final int end;
+
   const RulerRange({
     required this.begin,
     required this.end,
     this.scale = 1,
   });
+}
+
+// 重新实现选中区域绘制器，确保参考值位置固定对齐
+class _SelectedRangePainter extends CustomPainter {
+  final double scrollOffset;
+  final num referenceValue;
+  final num currentValue;
+  final Function(num) getPositionByValue;
+  final Color selectedRangeColor;
+  final double leftPadding;
+  final double ruleScaleInterval;
+  final ScrollController scrollController;
+  final Function(double) getRulerValueFromOffset;
+  final List<RulerRange> ranges;
+
+  _SelectedRangePainter({
+    required this.scrollOffset,
+    required this.referenceValue,
+    required this.currentValue,
+    required this.getPositionByValue,
+    required this.selectedRangeColor,
+    required this.leftPadding,
+    required this.ruleScaleInterval,
+    required this.scrollController,
+    required this.getRulerValueFromOffset,
+    required this.ranges,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (referenceValue == currentValue && !scrollController.hasClients) {
+      return;
+    }
+
+    // 获取当前滚动位置
+    double currentScrollOffset = scrollController.hasClients ? scrollController.offset : scrollOffset;
+    
+    // 计算参考值位置，确保精确到刻度位置
+    double referenceExactPos = getPositionByValue(referenceValue);
+    
+    // 视图中心位置（标记位置）
+    double centerPos = size.width / 2;
+    
+    // 计算参考值在视图中的位置
+    double refPosInView = leftPadding + (referenceExactPos - currentScrollOffset);
+    
+    // 确定滑动方向
+    bool isSlidingLeft = currentValue < referenceValue; // 向左滑动（值减小）
+    
+    // 刻度线中心偏移量
+    double halfRulerInterval = ruleScaleInterval / 2;
+    
+    // 根据滑动方向调整参考值位置，确保精确对齐
+    if (isSlidingLeft) {
+      // 向左滑动时（值减小），需要确保参考值位置精确对齐
+      refPosInView = ((refPosInView + halfRulerInterval) / ruleScaleInterval).round() 
+          * ruleScaleInterval - halfRulerInterval;
+    } else {
+      // 向右滑动时（值增加），同样确保精确对齐
+      refPosInView = ((refPosInView + halfRulerInterval) / ruleScaleInterval).round() 
+          * ruleScaleInterval - halfRulerInterval;
+    }
+    
+    // 计算选中区域边界
+    double left = min(refPosInView, centerPos);
+    double right = max(refPosInView, centerPos);
+    
+    // 特殊处理边界情况
+    if (referenceValue == ranges.first.begin && left < leftPadding) {
+      left = leftPadding;
+    }
+    
+    // 避免区域超出可见范围
+    if (right <= 0 || left >= size.width) {
+      return;
+    }
+    
+    // 确保在可见区域内
+    left = max(0, left);
+    right = min(size.width, right);
+    
+    // 绘制区域
+    Paint paint = Paint()
+      ..color = selectedRangeColor
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+    
+    canvas.drawRect(
+      Rect.fromLTRB(left, 0, right, size.height),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SelectedRangePainter oldDelegate) {
+    return oldDelegate.scrollOffset != scrollOffset || 
+           (scrollController.hasClients && scrollController.position.isScrollingNotifier.value);
+  }
 }

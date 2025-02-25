@@ -103,7 +103,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 return value.toInt().toString();
               },
               ranges: ranges,
-
               scaleLineStyleList: const [
                 ScaleLineStyle(
                     color: Colors.grey, width: 1.5, height: 30, scale: 0),
@@ -112,7 +111,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ScaleLineStyle(
                     color: Colors.grey, width: 1, height: 15, scale: -1)
               ],
-
+              referenceValue: 30,
               onValueChanged: (value) {
                 setState(() {
                   currentValue = value;
@@ -122,8 +121,8 @@ class _MyHomePageState extends State<MyHomePage> {
               height: 80,
               rulerMarginTop: 8,
               // marker: Container(
-              //     width: 8,
-              //     height: 50,
+              //     width: 1,
+              //     height: 100,
               //     decoration: BoxDecoration(
               //         color: Colors.red.withAlpha(100),
               //         borderRadius: BorderRadius.circular(5))),
