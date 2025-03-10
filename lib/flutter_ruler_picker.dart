@@ -570,10 +570,10 @@ class _SelectedRangePainter extends CustomPainter {
     double left = min(adjustedRefPosInView, centerPos);
     double right = max(adjustedRefPosInView, centerPos);
     
-    // 特殊处理边界情况
-    if (referenceValue == ranges.first.begin && left < leftPadding) {
-      left = leftPadding;
-    }
+    // // 特殊处理边界情况
+    // if (referenceValue == ranges.first.begin && left < leftPadding) {
+    //   left = leftPadding;
+    // }
     
     // 避免区域超出可见范围
     if (right <= 0 || left >= size.width) {
